@@ -1,0 +1,132 @@
+---
+# Vulnerable Deployment with multiple security issues
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vulnerable-app
+  namespace: default
+  labels:
+    app: vulnerable
+    security: intentionally-weak
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: vulnerable
+  template:
+    metadata:
+      labels:
+        app: vulnerable
+    spec:
+      # VULNERABILITY: No service account specified (uses default)
+      # VULNERABILITY: hostNetwork enabled
+      hostNetwork: true
+
+      # VULNERABILITY: hostPID enabled
+      hostPID: true
+
+      containers:
+      - name: vulnerable-container
+        image: nginx:1.20  # VULNERABILITY: Old image with CVEs
+
+        # VULNERABILITY: Running as root
+        # securityContext should have runAsNonRoot: true
+
+        securityContext:
+          # VULNERABILITY: Privileged mode enabled
+          privileged: true
+
+          # VULNERABILITY: Can escalate privileges
+          allowPrivilegeEscalation: true
+
+          # VULNERABILITY: All capabilities added
+          capabilities:
+            add:
+              - ALL
+
+        # VULNERABILITY: No resource limits
+        # resources:
+        #   limits:
+        #     memory: "128Mi"
+        #     cpu: "500m"
+
+        ports:
+        - containerPort: 80
+
+        volumeMounts:
+        # VULNERABILITY: Docker socket mounted
+        - name: docker-socket
+          mountPath: /var/run/docker.sock
+
+        # VULNERABILITY: Host path mounted
+        - name: host-root
+          mountPath: /host
+
+      volumes:
+      # VULNERABILITY: Docker socket volume
+      - name: docker-socket
+        hostPath:
+          path: /var/run/docker.sock
+          type: Socket
+
+      # VULNERABILITY: Root filesystem mounted
+      - name: host-root
+        hostPath:
+          path: /
+          type: Directory
+
+---
+# Vulnerable Service exposing to the world
+apiVersion: v1
+kind: Service
+metadata:
+  name: vulnerable-service
+  namespace: default
+spec:
+  type: LoadBalancer  # VULNERABILITY: Direct external exposure
+  selector:
+    app: vulnerable
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 80
+
+---
+# Overly permissive RBAC
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: vulnerable-cluster-role
+rules:
+# VULNERABILITY: Full cluster access
+- apiGroups: ["*"]
+  resources: ["*"]
+  verbs: ["*"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: vulnerable-binding
+subjects:
+# VULNERABILITY: Bound to default service account
+- kind: ServiceAccount
+  name: default
+  namespace: default
+roleRef:
+  kind: ClusterRole
+  name: vulnerable-cluster-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# Secret stored as ConfigMap (VULNERABILITY)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: database-credentials
+  namespace: default
+data:
+  # VULNERABILITY: Credentials in plain text
+  username: admin
+  password: Super$ecretP@ssw0rd123
+  database_url: postgresql://admin:Super$ecretP@ssw0rd123@db:5432/production

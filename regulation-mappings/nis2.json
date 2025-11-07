@@ -1,0 +1,176 @@
+{
+  "regulation": {
+    "code": "NIS2",
+    "name": "Network and Information Security Directive 2",
+    "version": "2024",
+    "description": "EU directive on security of network and information systems",
+    "effective_date": "2024-10-18",
+    "scope": ["Essential entities", "Important entities", "Digital infrastructure"]
+  },
+  "controls": [
+    {
+      "control_id": "Art.21.2.a",
+      "title": "Risk analysis and information system security policies",
+      "description": "Entities must implement policies on risk analysis and information system security",
+      "category": "Risk Management",
+      "priority": "critical",
+      "requirements": [
+        "Conduct regular risk assessments",
+        "Document information security policies",
+        "Implement risk treatment plans"
+      ],
+      "mapped_scanner_checks": [
+        {"scanner": "prowler", "check_id": "iam_policy_unused"},
+        {"scanner": "prowler", "check_id": "cloudtrail_enabled"},
+        {"scanner": "prowler", "check_id": "config_enabled"}
+      ]
+    },
+    {
+      "control_id": "Art.21.2.b",
+      "title": "Incident handling",
+      "description": "Procedures for incident detection, response, and recovery",
+      "category": "Incident Management",
+      "priority": "critical",
+      "requirements": [
+        "Implement incident detection mechanisms",
+        "Establish incident response procedures",
+        "Maintain incident logs and documentation"
+      ],
+      "mapped_scanner_checks": [
+        {"scanner": "prowler", "check_id": "cloudtrail_enabled"},
+        {"scanner": "prowler", "check_id": "guardduty_enabled"},
+        {"scanner": "prowler", "check_id": "securityhub_enabled"}
+      ]
+    },
+    {
+      "control_id": "Art.21.2.c",
+      "title": "Business continuity and crisis management",
+      "description": "Backup and disaster recovery capabilities",
+      "category": "Business Continuity",
+      "priority": "high",
+      "requirements": [
+        "Implement backup systems",
+        "Test disaster recovery procedures",
+        "Document business continuity plans"
+      ],
+      "mapped_scanner_checks": [
+        {"scanner": "prowler", "check_id": "backup_enabled"},
+        {"scanner": "prowler", "check_id": "rds_backup_enabled"},
+        {"scanner": "prowler", "check_id": "s3_versioning_enabled"}
+      ]
+    },
+    {
+      "control_id": "Art.21.2.d",
+      "title": "Supply chain security",
+      "description": "Security in supply chains and supplier relationships",
+      "category": "Supply Chain",
+      "priority": "high",
+      "requirements": [
+        "Assess supplier security posture",
+        "Monitor supply chain risks",
+        "Implement supplier security requirements"
+      ],
+      "mapped_scanner_checks": [
+        {"scanner": "trivy", "check_id": "CVE-*"},
+        {"scanner": "trivy", "check_id": "VULNERABILITY-*"}
+      ]
+    },
+    {
+      "control_id": "Art.21.2.e",
+      "title": "Security in network and information systems acquisition",
+      "description": "Procedures for assessing security in acquisition and development",
+      "category": "Secure Development",
+      "priority": "medium",
+      "requirements": [
+        "Implement secure development practices",
+        "Conduct security assessments before deployment",
+        "Maintain security requirements for procurement"
+      ],
+      "mapped_scanner_checks": [
+        {"scanner": "checkov", "check_id": "CKV_*"},
+        {"scanner": "trivy", "check_id": "MISCONFIG-*"}
+      ]
+    },
+    {
+      "control_id": "Art.21.2.f",
+      "title": "Policies and procedures for cryptography",
+      "description": "Use of cryptography and encryption where appropriate",
+      "category": "Cryptography",
+      "priority": "critical",
+      "requirements": [
+        "Encrypt data at rest",
+        "Encrypt data in transit",
+        "Implement key management procedures"
+      ],
+      "mapped_scanner_checks": [
+        {"scanner": "prowler", "check_id": "s3_bucket_encryption"},
+        {"scanner": "prowler", "check_id": "ebs_encryption"},
+        {"scanner": "prowler", "check_id": "rds_encryption"},
+        {"scanner": "prowler", "check_id": "kms_key_rotation"}
+      ]
+    },
+    {
+      "control_id": "Art.21.2.g",
+      "title": "Human resources security and access control",
+      "description": "Security in human resources and access control policies",
+      "category": "Access Control",
+      "priority": "critical",
+      "requirements": [
+        "Implement least privilege access",
+        "Enforce multi-factor authentication",
+        "Conduct regular access reviews"
+      ],
+      "mapped_scanner_checks": [
+        {"scanner": "prowler", "check_id": "iam_mfa_enabled"},
+        {"scanner": "prowler", "check_id": "iam_password_policy"},
+        {"scanner": "prowler", "check_id": "iam_root_mfa_enabled"},
+        {"scanner": "kube-bench", "check_id": "4.1.1"}
+      ]
+    },
+    {
+      "control_id": "Art.21.2.h",
+      "title": "Use of multi-factor authentication",
+      "description": "Multi-factor authentication or continuous authentication solutions",
+      "category": "Authentication",
+      "priority": "critical",
+      "requirements": [
+        "Enable MFA for all users",
+        "Enforce MFA for privileged accounts",
+        "Implement continuous authentication where feasible"
+      ],
+      "mapped_scanner_checks": [
+        {"scanner": "prowler", "check_id": "iam_mfa_enabled"},
+        {"scanner": "prowler", "check_id": "iam_root_mfa_enabled"}
+      ]
+    },
+    {
+      "control_id": "Art.21.2.i",
+      "title": "Secured voice, video and text communications",
+      "description": "Security of communications and emergency communication systems",
+      "category": "Communication Security",
+      "priority": "medium",
+      "requirements": [
+        "Encrypt communications channels",
+        "Implement secure communication protocols",
+        "Maintain emergency communication capabilities"
+      ],
+      "mapped_scanner_checks": [
+        {"scanner": "prowler", "check_id": "elb_ssl_policy"},
+        {"scanner": "prowler", "check_id": "alb_https_listener"}
+      ]
+    },
+    {
+      "control_id": "Art.21.2.j",
+      "title": "Secured emergency communication systems",
+      "description": "Alternative communication systems for emergencies",
+      "category": "Business Continuity",
+      "priority": "medium",
+      "requirements": [
+        "Maintain backup communication systems",
+        "Test emergency communication procedures",
+        "Document emergency contact procedures"
+      ],
+      "mapped_scanner_checks": []
+    }
+  ]
+}

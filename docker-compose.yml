@@ -1,0 +1,322 @@
+version: '3.9'
+
+services:
+  # ============================================================================
+  # FRONTEND - Modern React Dashboard
+  # ============================================================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: compliance-radar-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - VITE_API_URL=http://localhost:8000
+      - VITE_WS_URL=ws://localhost:8000
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+    depends_on:
+      - backend
+    networks:
+      - compliance-network
+    restart: unless-stopped
+
+  # ============================================================================
+  # BACKEND - FastAPI Application
+  # ============================================================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: compliance-radar-backend
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://complianceuser:compliancepass@postgres:5432/compliance_db
+      - REDIS_URL=redis://redis:6379
+      - OLLAMA_URL=http://ollama:11434
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - LOCALSTACK_ENDPOINT=http://localstack:4566
+      - SECRET_KEY=change-this-in-production-please-use-strong-random-key
+      - DEBUG=true
+    volumes:
+      - ./backend/app:/app/app
+      - ./regulation-mappings:/app/regulation-mappings
+      - ./scanner-integrations:/app/scanner-integrations
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - compliance-network
+    restart: unless-stopped
+
+  # ============================================================================
+  # CELERY WORKER - Async Task Processing
+  # ============================================================================
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: compliance-radar-celery
+    command: celery -A app.tasks.celery_app worker --loglevel=info --concurrency=4
+    environment:
+      - DATABASE_URL=postgresql://complianceuser:compliancepass@postgres:5432/compliance_db
+      - REDIS_URL=redis://redis:6379
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      - ./backend/app:/app/app
+      - ./scanner-integrations:/app/scanner-integrations
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - compliance-network
+    restart: unless-stopped
+
+  # ============================================================================
+  # FLOWER - Celery Monitoring UI
+  # ============================================================================
+  flower:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: compliance-radar-flower
+    command: celery -A app.tasks.celery_app flower --port=5555
+    ports:
+      - "5555:5555"
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      - redis
+      - celery-worker
+    networks:
+      - compliance-network
+    restart: unless-stopped
+
+  # ============================================================================
+  # DATABASE - PostgreSQL with TimescaleDB
+  # ============================================================================
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    container_name: compliance-radar-db
+    environment:
+      - POSTGRES_USER=complianceuser
+      - POSTGRES_PASSWORD=compliancepass
+      - POSTGRES_DB=compliance_db
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - compliance-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U complianceuser -d compliance_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ============================================================================
+  # REDIS - Cache & Message Broker
+  # ============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: compliance-radar-redis
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - compliance-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # ============================================================================
+  # OLLAMA - Local AI Model Server
+  # ============================================================================
+  ollama:
+    image: ollama/ollama:latest
+    container_name: compliance-radar-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    networks:
+      - compliance-network
+    # Uncomment if you have NVIDIA GPU
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ============================================================================
+  # MINIO - S3-Compatible Storage
+  # ============================================================================
+  minio:
+    image: minio/minio:latest
+    container_name: compliance-radar-minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    volumes:
+      - minio_data:/data
+    networks:
+      - compliance-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # ============================================================================
+  # TEST ENVIRONMENTS
+  # ============================================================================
+
+  # LocalStack - AWS Cloud Emulator
+  localstack:
+    image: localstack/localstack:latest
+    container_name: compliance-radar-localstack
+    ports:
+      - "4566:4566"  # LocalStack Gateway
+      - "4510-4559:4510-4559"  # External services port range
+    environment:
+      - SERVICES=s3,ec2,iam,kms,lambda,cloudtrail,guardduty,cloudwatch,config,sts
+      - DEBUG=1
+      - DATA_DIR=/tmp/localstack/data
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - AWS_DEFAULT_REGION=us-east-1
+    volumes:
+      - ./test-environments/aws-misconfigs:/etc/localstack/init/ready.d
+      - localstack_data:/tmp/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - compliance-network
+    restart: unless-stopped
+
+  # Kind (Kubernetes in Docker) - Vulnerable K8s Cluster
+  # Note: This requires special setup, documented in test-environments/k8s-vulnerable/README.md
+  # Uncomment when ready to use:
+  # kind-vulnerable:
+  #   image: kindest/node:v1.28.0
+  #   container_name: compliance-radar-k8s-vulnerable
+  #   privileged: true
+  #   ports:
+  #     - "6443:6443"
+  #   volumes:
+  #     - ./test-environments/k8s-vulnerable/manifests:/manifests
+  #   networks:
+  #     - compliance-network
+  #   restart: unless-stopped
+
+  # Azurite - Azure Storage Emulator
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:latest
+    container_name: compliance-radar-azurite
+    ports:
+      - "10000:10000"  # Blob service
+      - "10001:10001"  # Queue service
+      - "10002:10002"  # Table service
+    volumes:
+      - azurite_data:/data
+    command: azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0
+    networks:
+      - compliance-network
+    restart: unless-stopped
+
+  # ============================================================================
+  # MONITORING & OBSERVABILITY
+  # ============================================================================
+
+  # Prometheus - Metrics Collection
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: compliance-radar-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    networks:
+      - compliance-network
+    restart: unless-stopped
+
+  # Grafana - Visualization Dashboard
+  grafana:
+    image: grafana/grafana:latest
+    container_name: compliance-radar-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+    depends_on:
+      - prometheus
+    networks:
+      - compliance-network
+    restart: unless-stopped
+
+# ============================================================================
+# NETWORKS
+# ============================================================================
+networks:
+  compliance-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.0.0/16
+
+# ============================================================================
+# VOLUMES
+# ============================================================================
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  ollama_models:
+    driver: local
+  minio_data:
+    driver: local
+  localstack_data:
+    driver: local
+  azurite_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
